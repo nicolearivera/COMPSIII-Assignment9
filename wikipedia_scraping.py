@@ -17,7 +17,7 @@ CREATE TABLE movies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT,
     worldwide_gross INTEGER,
-    year INTEGER
+    year TEXT
 );
 ''')
 
@@ -32,47 +32,36 @@ def scrape_wikipedia():
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, "html.parser")
 
-    tables = soup.find_all("table", class_="wikitable")
-
-    target_table = None
-
-    # Find correct table by checking if it contains "Avatar"
-    for table in tables:
-        if "Avatar" in table.text:
-            target_table = table
-            break
-
-    if target_table is None:
-        target_table = tables[0]
-
-    rows = target_table.find_all("tr")
+    table = soup.find("table", class_="wikitable")
+    rows = table.find_all("tr")
 
     movies = []
 
     for row in rows[1:]:
         cols = row.find_all("td")
 
-        if len(cols) < 4:
+        # correct table has at least 5 columns
+        if len(cols) < 5:
             continue
 
         try:
-            title = cols[1].text.strip()
+            title = cols[2].text.strip()
+            gross_text = cols[3].text.strip()
+            year_text = cols[4].text.strip()
 
-            gross_text = cols[2].text
+            # clean gross
             gross_clean = re.sub(r"[^0-9]", "", gross_text)
-
             if not gross_clean:
                 continue
 
             worldwide_gross = int(gross_clean)
 
-            year_text = cols[3].text
+            # extract year as STRING (required by tests)
             year_match = re.search(r"\d{4}", year_text)
-
             if not year_match:
                 continue
 
-            year = int(year_match.group())
+            year = year_match.group()
 
             movies.append({
                 "title": title,
@@ -87,7 +76,6 @@ def scrape_wikipedia():
             continue
 
     return movies
-
 
 # -----------------------
 # INSERT INTO DATABASE
@@ -105,6 +93,7 @@ for movie in data:
     ))
 
 # -----------------------
-# COMMIT (REQUIRED)
+# COMMIT
 # -----------------------
 connection.commit()
+
