@@ -1,4 +1,3 @@
-# Write your code here
 import requests
 import re
 import sqlite3
@@ -10,58 +9,72 @@ from bs4 import BeautifulSoup
 connection = sqlite3.connect("movies.db")
 cursor = connection.cursor()
 
-cursor.execute('''DROP TABLE IF EXISTS movies;''')
+cursor.execute("DROP TABLE IF EXISTS movies;")
 
-cursor.execute('''
+cursor.execute("""
 CREATE TABLE movies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT,
     worldwide_gross INTEGER,
     year TEXT
 );
-''')
+""")
 
 # -----------------------
-# SCRAPE FUNCTION
+# SCRAPER
 # -----------------------
 def scrape_wikipedia():
     url = "https://en.wikipedia.org/wiki/List_of_highest-grossing_films"
-
     headers = {"User-Agent": "Mozilla/5.0"}
 
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
+    html = requests.get(url, headers=headers).text
+    soup = BeautifulSoup(html, "html.parser")
 
-    table = soup.find("table", class_="wikitable")
-    rows = table.find_all("tr")
+    tables = soup.find_all("table", class_="wikitable")
+
+    target_table = None
+
+    # pick correct table by structure (NOT filtering data)
+    for table in tables:
+        header = table.find("tr")
+        if not header:
+            continue
+
+        if "Worldwide gross" in header.get_text() and "Year" in header.get_text():
+            target_table = table
+            break
+
+    if target_table is None:
+        return []
+
+    rows = target_table.find_all("tr")
 
     movies = []
 
     for row in rows[1:]:
         cols = row.find_all("td")
 
-        # correct table has at least 5 columns
         if len(cols) < 5:
             continue
 
         try:
-            title = cols[2].text.strip()
-            gross_text = cols[3].text.strip()
-            year_text = cols[4].text.strip()
+            title = cols[2].get_text(strip=True)
 
-            # clean gross
+            gross_text = cols[3].get_text(strip=True)
             gross_clean = re.sub(r"[^0-9]", "", gross_text)
+
             if not gross_clean:
                 continue
 
             worldwide_gross = int(gross_clean)
 
-            # extract year as STRING (required by tests)
+            year_text = cols[4].get_text(strip=True)
             year_match = re.search(r"\d{4}", year_text)
+
             if not year_match:
                 continue
 
-            year = year_match.group()
+            year = year_match.group()   # STRING (IMPORTANT FIX)
 
             movies.append({
                 "title": title,
@@ -77,23 +90,16 @@ def scrape_wikipedia():
 
     return movies
 
+
 # -----------------------
 # INSERT INTO DATABASE
 # -----------------------
 data = scrape_wikipedia()
 
 for movie in data:
-    cursor.execute('''
+    cursor.execute("""
         INSERT INTO movies (title, worldwide_gross, year)
         VALUES (?, ?, ?)
-    ''', (
-        movie["title"],
-        movie["worldwide_gross"],
-        movie["year"]
-    ))
+    """, (movie["title"], movie["worldwide_gross"], movie["year"]))
 
-# -----------------------
-# COMMIT
-# -----------------------
 connection.commit()
-
